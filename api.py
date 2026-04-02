@@ -7,9 +7,7 @@ and savings estimation endpoints.
 Run:  uvicorn api:app --reload --port 8000
 """
 
-from __future__ import annotations
-
-from typing import Any
+from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -61,14 +59,14 @@ class PredictionResponse(BaseModel):
     decision: str
     scheduling_class: int
     class_name: str
-    predicted_peak_utilization: float | None
+    predicted_peak_utilization: Optional[float]
     safety_buffer_pct: float
-    recommended_cpu_ceiling: float | None
+    recommended_cpu_ceiling: Optional[float]
     original_request: float
-    cpu_freed_pct: float | None
-    actual_peak: float | None
+    cpu_freed_pct: Optional[float]
+    actual_peak: Optional[float]
     reasoning: list[ReasoningStepResponse]
-    refusal_reason: str | None
+    refusal_reason: Optional[str]
     mode: str
 
 

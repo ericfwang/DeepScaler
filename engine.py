@@ -9,8 +9,6 @@ Two operating modes:
   - DEMO: uses report-derived heuristics for simulation (clearly flagged)
 """
 
-from __future__ import annotations
-
 import json
 import math
 import pickle
@@ -18,7 +16,7 @@ import warnings
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import numpy as np
 import pandas as pd
@@ -127,18 +125,18 @@ class PredictionResult:
     decision: Decision
     scheduling_class: int
     class_name: str
-    predicted_peak_utilization: float | None = None
+    predicted_peak_utilization: Optional[float] = None
     safety_buffer_pct: float = SAFETY_BUFFER
-    recommended_cpu_ceiling: float | None = None
+    recommended_cpu_ceiling: Optional[float] = None
     original_request: float = 1.0
-    cpu_freed_pct: float | None = None
+    cpu_freed_pct: Optional[float] = None
     reasoning: list[ReasoningStep] = field(default_factory=list)
-    refusal_reason: str | None = None
+    refusal_reason: Optional[str] = None
     mode: str = "demo"
-    actual_peak: float | None = None
+    actual_peak: Optional[float] = None
 
     @property
-    def estimated_savings_fraction(self) -> float | None:
+    def estimated_savings_fraction(self) -> Optional[float]:
         if self.cpu_freed_pct is not None:
             return self.cpu_freed_pct / 100.0
         return None
@@ -166,7 +164,7 @@ class DeepScalerAgent:
     100 real jobs (with features) for interactive analysis.
     """
 
-    def __init__(self, model_dir: str | Path | None = None):
+    def __init__(self, model_dir: Optional[str] = None):
         self.model_dir = Path(model_dir) if model_dir else DEFAULT_MODEL_DIR
         self._lgb_model = None
         self._cb_model = None
@@ -177,8 +175,8 @@ class DeepScalerAgent:
         self._init_errors: list[str] = []
 
         # Sample data for the dashboard
-        self.sample_jobs: pd.DataFrame | None = None
-        self.sample_features: pd.DataFrame | None = None
+        self.sample_jobs: Optional[pd.DataFrame] = None
+        self.sample_features: Optional[pd.DataFrame] = None
 
         # Try multiple possible model directories
         candidates = [self.model_dir]
@@ -246,7 +244,7 @@ class DeepScalerAgent:
             # Sample data loaded but no ML models — still useful for demo
             self.mode = "demo"
 
-    def predict_from_features(self, X: np.ndarray, job_idx: int | None = None) -> float:
+    def predict_from_features(self, X: np.ndarray, job_idx: Optional[int] = None) -> float:
         """Run the trained ensemble on a pre-computed feature vector (1, n_features).
         Falls back to stored ensemble_prediction if models aren't available."""
         if X.ndim == 1:

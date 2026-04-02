@@ -49,7 +49,12 @@ st.sidebar.title("DeepScaler")
 if agent.mode == "production":
     st.sidebar.success("PRODUCTION MODE — trained LightGBM + CatBoost loaded.")
 else:
-    st.sidebar.warning("DEMO MODE — no trained models found.")
+    st.sidebar.warning(
+        f"DEMO MODE — LightGBM: {'loaded' if agent._lgb_model else 'not found'}, "
+        f"CatBoost: {'loaded' if agent._cb_model else 'not found'}, "
+        f"Sample data: {'loaded' if agent.sample_jobs is not None else 'not found'}. "
+        f"Model dir: {agent.model_dir}"
+    )
 
 # Load sample jobs for selection
 sample_jobs = agent.sample_jobs

@@ -183,7 +183,14 @@ class DeepScalerAgent:
             self._load_models()
 
     def _load_models(self) -> None:
+        import logging
+        logger = logging.getLogger("deepscaler")
         loaded = 0
+
+        logger.info(f"Loading models from {self.model_dir}")
+        logger.info(f"Model dir exists: {self.model_dir.exists()}")
+        if self.model_dir.exists():
+            logger.info(f"Model dir contents: {list(self.model_dir.iterdir())}")
 
         # Metadata (feature names, weights)
         meta_path = self.model_dir / "metadata.json"
@@ -195,29 +202,38 @@ class DeepScalerAgent:
 
         # LightGBM
         lgb_path = self.model_dir / "lightgbm_q9091.txt"
+        logger.info(f"LGB path exists: {lgb_path.exists()}, _HAS_LGB: {_HAS_LGB}")
         if lgb_path.exists() and _HAS_LGB:
             self._lgb_model = lgb.Booster(model_file=str(lgb_path))
             loaded += 1
 
         # CatBoost
         cb_path = self.model_dir / "catboost_q90.cbm"
+        logger.info(f"CB path exists: {cb_path.exists()}, _HAS_CB: {_HAS_CB}")
         if cb_path.exists() and _HAS_CB:
             self._cb_model = cb.CatBoostRegressor()
             self._cb_model.load_model(str(cb_path))
             loaded += 1
 
-        # Sample jobs + pre-computed features
+        # Sample jobs + pre-computed features (load even if models fail)
         sj_path = self.model_dir / "sample_jobs.parquet"
         sf_path = self.model_dir / "sample_features.parquet"
+        logger.info(f"Sample jobs exists: {sj_path.exists()}, features exists: {sf_path.exists()}")
         if sj_path.exists() and sf_path.exists():
             self.sample_jobs = pd.read_parquet(sj_path)
             self.sample_features = pd.read_parquet(sf_path)
+            logger.info(f"Loaded {len(self.sample_jobs)} sample jobs")
 
+        logger.info(f"Models loaded: {loaded}")
         if loaded >= 1:
             self.mode = "production"
+        elif self.sample_jobs is not None:
+            # Sample data loaded but no ML models — still useful for demo
+            self.mode = "demo"
 
-    def predict_from_features(self, X: np.ndarray) -> float:
-        """Run the trained ensemble on a pre-computed feature vector (1, n_features)."""
+    def predict_from_features(self, X: np.ndarray, job_idx: int | None = None) -> float:
+        """Run the trained ensemble on a pre-computed feature vector (1, n_features).
+        Falls back to stored ensemble_prediction if models aren't available."""
         if X.ndim == 1:
             X = X.reshape(1, -1)
         preds: dict[str, float] = {}
@@ -226,7 +242,11 @@ class DeepScalerAgent:
         if self._cb_model:
             preds["cb"] = float(np.expm1(self._cb_model.predict(X)[0]))
         if not preds:
-            return float(np.mean(X[0, :5]))  # fallback
+            # No models loaded — use stored prediction from training
+            if (job_idx is not None and self.sample_jobs is not None
+                    and "ensemble_prediction" in self.sample_jobs.columns):
+                return float(self.sample_jobs.iloc[job_idx]["ensemble_prediction"])
+            return float(np.mean(X[0, :5]))
 
         w = self._ensemble_weights
         total_w = sum(w.get(k, 0.5) for k in preds)
@@ -304,9 +324,9 @@ class DeepScalerAgent:
                 mode=self.mode,
             )
 
-        # Predict peak CPU utilization using real models
+        # Predict peak CPU utilization using real models (or stored predictions)
         # predicted_peak is a ratio: peak_usage / requested_cpus
-        predicted_peak_ratio = self.predict_from_features(X)
+        predicted_peak_ratio = self.predict_from_features(X, job_idx=job_idx)
 
         # Individual model predictions for reasoning
         lgb_pred = float(np.expm1(self._lgb_model.predict(X.reshape(1, -1))[0])) if self._lgb_model else None

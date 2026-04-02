@@ -148,7 +148,7 @@ with tab_predict:
                              help="Ground truth peak usage from dataset")
             col_d.metric("DeepScaler Ceiling", f"{ceiling:.6f}",
                          delta=f"-{freed:.1f}% vs provisioned" if freed > 0 else "No change",
-                         delta_color="normal" if freed > 0 else "off",
+                         delta_color="inverse" if freed > 0 else "off",
                          help="Recommended allocation = predicted peak + 10% safety buffer")
 
             # Row 2: Savings summary

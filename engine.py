@@ -174,13 +174,28 @@ class DeepScalerAgent:
         self._ensemble_weights: dict[str, float] = {}
         self._metadata: dict[str, Any] = {}
         self.mode = "demo"
+        self._init_errors: list[str] = []
 
         # Sample data for the dashboard
         self.sample_jobs: pd.DataFrame | None = None
         self.sample_features: pd.DataFrame | None = None
 
-        if self.model_dir.exists():
-            self._load_models()
+        # Try multiple possible model directories
+        candidates = [self.model_dir]
+        # On Streamlit Cloud, __file__ may resolve differently
+        candidates.append(Path(__file__).resolve().parent / "models")
+        # Also try cwd
+        candidates.append(Path.cwd() / "models")
+
+        for candidate in candidates:
+            if candidate.exists() and any(candidate.iterdir()):
+                self.model_dir = candidate
+                self._load_models()
+                break
+        else:
+            self._init_errors.append(
+                f"No model directory found. Tried: {[str(c) for c in candidates]}"
+            )
 
     def _load_models(self) -> None:
         import logging

@@ -463,6 +463,7 @@ job's execution trace, enabling quick right-sizing. The system uses a 72-feature
 and a 3-model GPU ensemble (LightGBM + CatBoost + FT-Transformer).
 
 **Key Results**:
+- **28% reduction in resource slack** for production workloads (classes 2-3): the GPU ensemble predicts ~28% below the original CPU request, reclaiming that fraction of allocated CPUs that would otherwise sit idle
 - **67.2% improvement** over baseline (AsymRMSE: 23.64 vs 72.11)
 - **6.4% under-prediction rate** (near the 9.1% theoretical optimum)
 - **$270M/year** estimated savings at Google's scale

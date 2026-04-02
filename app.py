@@ -114,47 +114,84 @@ with tab_predict:
         result = agent.predict_job(selected_idx)
         job = sample_jobs.iloc[selected_idx]
 
+        # Compute absolute CPU values for display
+        req = result.original_request  # provisioned CPUs (absolute)
+        actual_ratio = result.actual_peak  # actual peak / requested
+        actual_abs = actual_ratio * req if actual_ratio is not None else None
+
         # Decision banner
         if result.decision == Decision.REFUSE:
             st.error(f"REFUSED  &mdash;  {result.refusal_reason}")
-            col_a, col_b = st.columns(2)
+            col_a, col_b, col_c = st.columns(3)
             col_a.metric("Scheduling Class", f"{result.scheduling_class}: {result.class_name}")
-            col_b.metric("Actual Peak (ground truth)", f"{result.actual_peak:.4f}")
+            col_b.metric("Provisioned CPUs", f"{req:.6f}")
+            if actual_abs is not None:
+                col_c.metric("Actual Peak Usage", f"{actual_abs:.6f}",
+                             delta=f"{actual_ratio:.1f}x provisioned", delta_color="off")
         else:
             freed = result.cpu_freed_pct or 0
-            col_a, col_b, col_c, col_d = st.columns(4)
-            col_a.metric("Predicted Peak", f"{result.predicted_peak_utilization:.4f}")
-            col_b.metric("Recommended Ceiling", f"{result.recommended_cpu_ceiling:.4f}")
-            col_c.metric("CPU Freed", f"{freed:.1f}%")
-            col_d.metric("Actual Peak (truth)", f"{result.actual_peak:.4f}")
+            pred_ratio = result.predicted_peak_utilization
+            pred_abs = pred_ratio * req
+            ceiling = result.recommended_cpu_ceiling
 
-            # Right-sizing visualization
+            # Row 1: Provisioned vs Predicted vs Actual (all in absolute CPUs)
+            st.markdown("#### CPU Allocation Breakdown")
+            col_a, col_b, col_c, col_d = st.columns(4)
+            col_a.metric("Provisioned", f"{req:.6f}",
+                         help="CPUs originally allocated to this job")
+            col_b.metric("Predicted Peak", f"{pred_abs:.6f}",
+                         delta=f"{pred_ratio:.2f}x provisioned", delta_color="off",
+                         help="Ensemble prediction of peak CPU usage")
+            if actual_abs is not None:
+                col_c.metric("Actual Peak", f"{actual_abs:.6f}",
+                             delta=f"{actual_ratio:.2f}x provisioned", delta_color="off",
+                             help="Ground truth peak usage from dataset")
+            col_d.metric("DeepScaler Ceiling", f"{ceiling:.6f}",
+                         delta=f"-{freed:.1f}% vs provisioned" if freed > 0 else "No change",
+                         delta_color="normal" if freed > 0 else "off",
+                         help="Recommended allocation = predicted peak + 10% safety buffer")
+
+            # Row 2: Savings summary
+            if freed > 0:
+                freed_abs = req - ceiling
+                st.success(
+                    f"**{freed:.1f}% reclaimed** — reduce allocation from "
+                    f"{req:.6f} to {ceiling:.6f} CPUs "
+                    f"(freeing {freed_abs:.6f} CPUs per task)."
+                )
+            else:
+                st.info(
+                    f"No reclamation possible — predicted peak ({pred_ratio:.2f}x) "
+                    f"exceeds provisioned allocation. This job needs its full request."
+                )
+
+            # Right-sizing bar chart (all values in absolute CPUs)
+            bar_labels = ["Provisioned", "Predicted Peak\n(+10% buffer)", "Actual Peak"]
+            bar_values = [req, ceiling, actual_abs if actual_abs else 0]
+            bar_colors = ["#EF5350", "#2E7D32", "#1565C0"]
+
             fig = go.Figure()
-            # Horizontal lines
-            fig.add_hline(
-                y=result.original_request, line_dash="solid", line_color="red",
-                annotation_text=f"Requested CPUs = {result.original_request:.4f}",
-            )
-            fig.add_hline(
-                y=result.recommended_cpu_ceiling, line_dash="dash", line_color="green",
-                annotation_text=f"DeepScaler ceiling = {result.recommended_cpu_ceiling:.4f}",
-            )
-            fig.add_hline(
-                y=result.actual_peak, line_dash="dot", line_color="blue",
-                annotation_text=f"Actual peak = {result.actual_peak:.4f}",
-            )
-            # Reclaimed region
-            if result.recommended_cpu_ceiling < result.original_request:
-                fig.add_hrect(
-                    y0=result.recommended_cpu_ceiling, y1=result.original_request,
-                    fillcolor="green", opacity=0.12,
-                    annotation_text=f"{freed:.1f}% reclaimed",
+            fig.add_trace(go.Bar(
+                x=bar_labels, y=bar_values,
+                marker_color=bar_colors,
+                text=[f"{v:.6f}" for v in bar_values],
+                textposition="outside",
+            ))
+            # Shade the reclaimed region between provisioned and ceiling
+            if freed > 0:
+                fig.add_shape(
+                    type="rect", x0=-0.4, x1=0.4, y0=ceiling, y1=req,
+                    fillcolor="green", opacity=0.15, line_width=0,
+                )
+                fig.add_annotation(
+                    x=0, y=(req + ceiling) / 2,
+                    text=f"{freed:.1f}%\nfreed",
+                    showarrow=False, font=dict(color="green", size=12),
                 )
             fig.update_layout(
-                title="Right-Sizing Recommendation",
-                yaxis_title="CPU (fraction of machine)",
-                height=350, template="plotly_white",
-                xaxis=dict(visible=False),
+                title="CPU Allocation: Provisioned vs Predicted vs Actual",
+                yaxis_title="CPUs (absolute)",
+                height=400, template="plotly_white",
             )
             st.plotly_chart(fig, use_container_width=True)
 
